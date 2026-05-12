@@ -42,6 +42,7 @@ export class PreviewWidget {
             </button>
           </div>
         </div>
+        <div id="driveStatus" class="drive-status"></div>
         <div class="report-doc" id="reportPreview"></div>
       </div>
     `;

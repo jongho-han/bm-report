@@ -5,6 +5,7 @@
 import FileService from './services/file-service.js';
 import AnalysisService from './services/analysis-service.js';
 import WordExportService from './services/word-export-service.js';
+import GoogleDriveService from './services/google-drive-service.js';
 import AnalysisData from './models/analysis-data.js';
 import UploadWidget from './components/upload-widget.js';
 import ProgressWidget from './components/progress-widget.js';
@@ -19,6 +20,8 @@ class ReportApp {
   }
 
   initializeWidgets() {
+    GoogleDriveService.init();
+
     // Error widget
     this.errorWidget = new ErrorWidget('errorContainer');
 
@@ -65,26 +68,53 @@ class ReportApp {
     if (!this.analysisData) return;
 
     const downloadBtn = document.getElementById('downloadBtn');
+    const driveStatus = document.getElementById('driveStatus');
     downloadBtn.disabled = true;
     downloadBtn.textContent = '생성 중...';
+    if (driveStatus) driveStatus.textContent = '';
 
+    let blob;
     try {
-      const blob = await WordExportService.generateDocx(this.analysisData, this.fileName);
+      blob = await WordExportService.generateDocx(this.analysisData, this.fileName);
       WordExportService.download(blob, this.fileName);
     } catch (error) {
       alert('Word 파일 생성 오류: ' + error.message);
       console.error(error);
-    } finally {
       downloadBtn.disabled = false;
-      downloadBtn.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7,10 12,15 17,10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-        Word 다운로드
-      `;
+      this.#restoreDownloadBtn(downloadBtn);
+      return;
     }
+
+    this.#restoreDownloadBtn(downloadBtn);
+    downloadBtn.disabled = false;
+
+    // Google Drive 업로드 (설정된 경우)
+    if (GoogleDriveService.isConfigured() && driveStatus) {
+      const safeName = this.fileName.replace(/\.xlsx?$/i, '');
+      const docxName = `BM영업일지_분석보고서_${safeName}.docx`;
+      driveStatus.textContent = '구글 드라이브에 저장 중...';
+      driveStatus.className = 'drive-status saving';
+      try {
+        await GoogleDriveService.uploadDocx(blob, docxName);
+        driveStatus.textContent = '✓ 구글 드라이브 저장 완료';
+        driveStatus.className = 'drive-status success';
+      } catch (err) {
+        driveStatus.textContent = '드라이브 저장 실패: ' + err.message;
+        driveStatus.className = 'drive-status error';
+        console.error(err);
+      }
+    }
+  }
+
+  #restoreDownloadBtn(btn) {
+    btn.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7,10 12,15 17,10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Word 다운로드
+    `;
   }
 
   handleReset() {
