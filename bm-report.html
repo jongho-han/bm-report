@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BM 영업일지 보고서 생성기</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --navy: #1F4E79; --navy-light: #2E6DA4; --navy-pale: #EBF3FA;
+    --green: #375623; --red: #C00000; --amber: #7F3F00;
+    --gray: #595959; --gray-light: #F5F5F5; --border: #E0E0E0;
+    --white: #FFFFFF; --text: #1a1a1a; --text-muted: #666;
+  }
+  html, body { height: 100%; background: #F0F4F8; font-family: 'Noto Sans KR', sans-serif; color: var(--text); }
+  .app { min-height: 100vh; display: flex; flex-direction: column; }
+  header {
+    background: var(--white); border-bottom: 1px solid var(--border);
+    padding: 0 40px; height: 64px; display: flex; align-items: center;
+    justify-content: space-between; position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon { width: 36px; height: 36px; background: var(--navy); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  .logo-icon svg { width: 20px; height: 20px; }
+  .logo-text { font-size: 16px; font-weight: 700; color: var(--navy); letter-spacing: -0.3px; }
+  .logo-sub { font-size: 12px; color: var(--text-muted); font-weight: 300; }
+  .header-badge { font-size: 12px; background: var(--navy-pale); color: var(--navy); padding: 4px 12px; border-radius: 20px; font-weight: 500; }
+  main { flex: 1; padding: 40px; max-width: 1000px; width: 100%; margin: 0 auto; }
+
+  /* Upload */
+  .upload-section {
+    background: var(--white); border-radius: 16px; padding: 48px; text-align: center;
+    border: 2px dashed var(--border); transition: all 0.2s; cursor: pointer;
+  }
+  .upload-section.drag-over { border-color: var(--navy); background: var(--navy-pale); }
+  .upload-section:hover { border-color: var(--navy-light); }
+  .upload-icon { width: 64px; height: 64px; background: var(--navy-pale); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
+  .upload-icon svg { width: 32px; height: 32px; color: var(--navy); }
+  .upload-title { font-size: 20px; font-weight: 700; color: var(--navy); margin-bottom: 8px; }
+  .upload-desc { font-size: 14px; color: var(--text-muted); margin-bottom: 24px; line-height: 1.6; }
+  .upload-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--navy); color: white; border: none; padding: 12px 28px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; font-family: 'Noto Sans KR', sans-serif; transition: background 0.15s; }
+  .upload-btn:hover { background: var(--navy-light); }
+  #fileInput { display: none; }
+  .upload-hint { margin-top: 16px; font-size: 12px; color: #AAA; }
+
+  /* Progress */
+  .progress-section { display: none; background: var(--white); border-radius: 16px; padding: 40px; text-align: center; }
+  .progress-spinner { width: 48px; height: 48px; border: 3px solid var(--navy-pale); border-top-color: var(--navy); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 20px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .progress-title { font-size: 16px; font-weight: 600; color: var(--navy); margin-bottom: 8px; }
+  .progress-step { font-size: 13px; color: var(--text-muted); }
+
+  /* Preview */
+  .preview-section { display: none; }
+  .preview-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+  .preview-title { font-size: 20px; font-weight: 700; color: var(--navy); }
+  .preview-meta { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+  .btn-group { display: flex; gap: 10px; }
+  .btn-reset { display: inline-flex; align-items: center; gap: 6px; background: var(--white); color: var(--gray); border: 1px solid var(--border); padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: 'Noto Sans KR', sans-serif; transition: all 0.15s; }
+  .btn-reset:hover { border-color: var(--navy); color: var(--navy); }
+  .btn-download { display: inline-flex; align-items: center; gap: 8px; background: var(--navy); color: white; border: none; padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: 'Noto Sans KR', sans-serif; transition: background 0.15s; }
+  .btn-download:hover { background: var(--navy-light); }
+  .btn-download:disabled { background: #aaa; cursor: not-allowed; }
+
+  /* Report preview */
+  .report-doc { background: var(--white); border-radius: 16px; padding: 48px; box-shadow: 0 2px 16px rgba(0,0,0,0.06); }
+  .report-cover-title { font-size: 28px; font-weight: 700; color: var(--navy); text-align: center; margin-bottom: 8px; }
+  .report-cover-period { text-align: center; font-size: 15px; color: var(--gray); margin-bottom: 6px; }
+  .report-cover-sub { text-align: center; font-size: 13px; color: #AAA; padding-bottom: 24px; border-bottom: 3px solid var(--navy); margin-bottom: 32px; }
+  .section-heading { font-size: 16px; font-weight: 700; color: var(--navy); padding-bottom: 8px; border-bottom: 2px solid var(--navy); margin: 28px 0 16px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 8px; }
+  .summary-card { background: var(--navy); border-radius: 8px; padding: 14px; text-align: center; }
+  .summary-card-label { font-size: 11px; color: rgba(255,255,255,0.7); margin-bottom: 6px; }
+  .summary-card-value { font-size: 18px; font-weight: 700; color: white; }
+  .summary-card-sub { font-size: 10px; color: rgba(255,255,255,0.6); margin-top: 3px; }
+  .data-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 8px; }
+  .data-table th { background: var(--navy); color: white; padding: 10px 12px; text-align: center; font-weight: 600; font-size: 12px; }
+  .data-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); text-align: center; }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: var(--gray-light); }
+  .td-left { text-align: left !important; }
+  .td-bold { font-weight: 600; }
+  .c-navy { color: var(--navy); } .c-green { color: var(--green); } .c-red { color: var(--red); } .c-amber { color: var(--amber); }
+  .insight-block { margin-bottom: 16px; }
+  .insight-label { font-size: 13px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .insight-label::before { content: ''; display: inline-block; width: 4px; height: 16px; border-radius: 2px; flex-shrink: 0; }
+  .insight-label.danger { color: var(--red); } .insight-label.danger::before { background: var(--red); }
+  .insight-label.info { color: var(--navy); } .insight-label.info::before { background: var(--navy); }
+  .insight-label.success { color: var(--green); } .insight-label.success::before { background: var(--green); }
+  .insight-label.warn { color: var(--amber); } .insight-label.warn::before { background: var(--amber); }
+  .insight-bullets { list-style: none; padding-left: 12px; }
+  .insight-bullets li { font-size: 13px; line-height: 1.7; color: var(--text); padding: 3px 0 3px 14px; position: relative; }
+  .insight-bullets li::before { content: '●'; position: absolute; left: 0; font-size: 8px; top: 6px; color: var(--navy); }
+  .footer-note { border-top: 1px solid var(--border); margin-top: 32px; padding-top: 12px; text-align: right; font-size: 11px; color: #AAA; }
+  .error-box { display: none; background: #FFF5F5; border: 1px solid #FFCCCC; border-radius: 8px; padding: 16px 20px; color: var(--red); font-size: 13px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14,2 14,8 20,8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+          <polyline points="10,9 9,9 8,9"/>
+        </svg>
+      </div>
+      <div>
+        <div class="logo-text">BM 영업일지 보고서 생성기</div>
+        <div class="logo-sub">iM라이프 방카슈랑스 영업본부</div>
+      </div>
+    </div>
+    <div class="header-badge">Word 자동 생성</div>
+  </header>
+
+  <main>
+    <div class="upload-section" id="uploadSection"
+         ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)"
+         onclick="document.getElementById('fileInput').click()">
+      <div class="upload-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17,8 12,3 7,8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+      </div>
+      <div class="upload-title">엑셀 파일을 업로드하세요</div>
+      <div class="upload-desc">BM영업일지 xlsx 파일을 드래그하거나<br>아래 버튼을 클릭하여 선택하세요</div>
+      <button class="upload-btn" onclick="event.stopPropagation(); document.getElementById('fileInput').click()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17,8 12,3 7,8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        파일 선택
+      </button>
+      <div class="upload-hint">지원 형식: .xlsx · 최대 10MB</div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="handleFile(event)">
+    </div>
+
+    <div class="error-box" id="errorBox"></div>
+
+    <div class="progress-section" id="progressSection">
+      <div class="progress-spinner"></div>
+      <div class="progress-title">보고서 분석 중...</div>
+      <div class="progress-step" id="progressStep">파일을 읽는 중입니다</div>
+    </div>
+
+    <div class="preview-section" id="previewSection">
+      <div class="preview-header">
+        <div>
+          <div class="preview-title">보고서 미리보기</div>
+          <div class="preview-meta" id="previewMeta"></div>
+        </div>
+        <div class="btn-group">
+          <button class="btn-reset" onclick="resetApp()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="1,4 1,10 7,10"/>
+              <path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
+            </svg>
+            다시 업로드
+          </button>
+          <button class="btn-download" id="downloadBtn" onclick="downloadWord()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7,10 12,15 17,10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Word 다운로드
+          </button>
+        </div>
+      </div>
+      <div class="report-doc" id="reportPreview"></div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ─── State ───
+let analysisData = null;
+let fileName = '';
+
+// ─── Drag & Drop ───
+function onDragOver(e) { e.preventDefault(); document.getElementById('uploadSection').classList.add('drag-over'); }
+function onDragLeave(e) { document.getElementById('uploadSection').classList.remove('drag-over'); }
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('uploadSection').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) processFile(file);
+}
+function handleFile(e) { const file = e.target.files[0]; if (file) processFile(file); }
+
+// ─── File Processing ───
+function processFile(file) {
+  fileName = file.name;
+  showProgress('파일을 읽는 중입니다...');
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      setStep('데이터를 파싱하는 중입니다...');
+      const wb = XLSX.read(e.target.result, { type: 'binary', cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      setStep('영업 활동을 분석하는 중입니다...');
+      const data = analyzeData(rows);
+      analysisData = data;
+      setStep('보고서를 구성하는 중입니다...');
+      setTimeout(() => { renderPreview(data); showPreview(); }, 300);
+    } catch(err) { showError('파일 처리 오류: ' + err.message); }
+  };
+  reader.onerror = () => showError('파일을 읽을 수 없습니다.');
+  reader.readAsBinaryString(file);
+}
+
+// ─── Data Analysis ───
+function analyzeData(rows) {
+  if (!rows || rows.length < 2) throw new Error('데이터가 없습니다.');
+  let headerIdx = 0;
+  for (let i = 0; i < Math.min(5, rows.length); i++) {
+    if (rows[i] && rows[i].some(c => String(c||'').includes('이름') || String(c||'').includes('내용'))) { headerIdx = i; break; }
+  }
+  const headers = rows[headerIdx].map(h => String(h||'').trim());
+  const ci = {
+    이름: headers.findIndex(h => h.includes('이름')),
+    날짜: headers.findIndex(h => h.includes('날짜')),
+    은행: headers.findIndex(h => h.includes('은행')),
+    방문지점: headers.findIndex(h => h.includes('방문지점') || h.includes('지점')),
+    판매인: headers.findIndex(h => h.includes('판매인')),
+    내용: headers.findIndex(h => h.includes('내용')),
+  };
+  const records = [];
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.every(c => !c)) continue;
+    const get = k => String(row[ci[k]] != null ? row[ci[k]] : '').trim();
+    records.push({ 이름: get('이름'), 날짜: get('날짜'), 은행: get('은행'), 방문지점: get('방문지점'), 판매인: get('판매인'), 내용: get('내용') });
+  }
+  if (!records.length) throw new Error('유효한 데이터 행이 없습니다.');
+
+  const dates = [...new Set(records.map(r => r.날짜).filter(Boolean))].sort();
+  const repCounts = {}, repBanks = {}, bankCounts = {};
+  records.forEach(r => {
+    if (r.이름) { repCounts[r.이름] = (repCounts[r.이름]||0)+1; if (r.은행) repBanks[r.이름] = r.은행; }
+    if (r.은행) bankCounts[r.은행] = (bankCounts[r.은행]||0)+1;
+  });
+  const topBank = Object.entries(bankCounts).sort((a,b)=>b[1]-a[1])[0];
+  const topBankPct = topBank ? Math.round(topBank[1]/records.length*100) : 0;
+  const contents = records.map(r => r.내용).filter(Boolean);
+
+  const kwDefs = [
+    { name: '치매/저해지 상품', keys: ['치매','저해지'], color: 'navy', desc: '8년차 환급률 강조 영업. 치매형 창구 활성화 시도' },
+    { name: '수수료 강점', keys: ['수수료'], color: 'green', desc: '당사 핵심 경쟁력. 다수 지점 긍정 반응' },
+    { name: '상해일반형', keys: ['상해 일반','상해일반','상해형','안심상해'], color: 'green', desc: '5·7·20년납 비교 설명, 여성 피보험자 수수료 우위' },
+    { name: '하이브리드/일시납', keys: ['하이브리드','일시납'], color: 'amber', desc: '창구 선호 상품. 수수료 낮다는 의견 병존' },
+    { name: '법인계약', keys: ['법인'], color: 'amber', desc: '대부계 실적 저조로 연계 판매 기회 감소' },
+    { name: '대출연계 판매', keys: ['대출'], color: '', desc: '신규 대출 발생 감소로 연계 판매 어려움' },
+    { name: '경쟁사: 동양생명', keys: ['동양'], color: 'red', desc: '4월 개정 이후 환급률 우위로 지점 선호 지속' },
+    { name: '경쟁사: 하나생명', keys: ['하나생명'], color: 'red', desc: '가입한도·PB채널 선호. 강한 선호도 형성' },
+    { name: '펀드', keys: ['펀드'], color: '', desc: '투자 관심 고객 증가로 보험 판매 어려움 가중' },
+    { name: '신계약', keys: ['신계약'], color: '', desc: '감사 인사·사은품 전달 및 지속 관리 활동' },
+    { name: '연금', keys: ['연금'], color: '', desc: '일시납 연금 중심 창구 판매 현황' },
+  ];
+  const kwResults = kwDefs.map(kw => ({
+    ...kw, count: contents.filter(c => kw.keys.some(k => c.includes(k))).length
+  })).filter(k => k.count > 0).sort((a,b) => b.count-a.count);
+
+  const compCounts = {
+    '동양생명': contents.filter(c=>c.includes('동양')).length,
+    '하나생명': contents.filter(c=>c.includes('하나생명')).length,
+    '흥국': contents.filter(c=>c.includes('흥국')).length,
+    '한화': contents.filter(c=>c.includes('한화')).length,
+  };
+  const totalComp = Object.values(compCounts).reduce((a,b)=>a+b,0);
+
+  // 날짜별 건수 + 주요 이슈 추출
+  const dateCounts = {}, dateIssueTexts = {};
+  records.forEach(r => {
+    if (!r.날짜) return;
+    dateCounts[r.날짜] = (dateCounts[r.날짜]||0)+1;
+    if (!dateIssueTexts[r.날짜]) dateIssueTexts[r.날짜] = [];
+    if (r.내용) dateIssueTexts[r.날짜].push(r.내용);
+  });
+  // ── 날짜별 이슈 — 내용 텍스트를 직접 분석해 구체적 문장 생성 ──
+  const issueRules = [
+    // 경쟁사
+    { keys:['동양'], neg:[], tag:'경쟁', tmpl:(n,c)=>`동양생명 경쟁 ${n}건 — ${c.includes('환급률')?'환급률 비교 이슈':c.includes('선호')?'판매인 선호도 높음':'방문 지점서 언급됨'}` },
+    { keys:['하나생명'], neg:[], tag:'경쟁', tmpl:(n,c)=>`하나생명 경쟁 ${n}건 — ${c.includes('한도')||c.includes('가입')?'가입한도 우위 경쟁':c.includes('PB')?'PB채널 선점':'현장서 비교 요청'}` },
+    { keys:['흥국'], neg:[], tag:'경쟁', tmpl:(n,c)=>`흥국생명 경쟁 ${n}건` },
+    // 상품
+    { keys:['치매','저해지'], neg:[], tag:'상품', tmpl:(n,c)=>`치매·저해지 상품 홍보 ${n}건 — ${c.includes('8년')||c.includes('8년차')?'8년차 환급률 강조':c.includes('비과세')?'비과세 컨셉 활용':'창구 활성화 집중'}` },
+    { keys:['상해 일반','상해일반','안심상해','상해형'], neg:[], tag:'상품', tmpl:(n,c)=>`상해일반형 홍보 ${n}건 — ${c.includes('여성')||c.includes('여자')||c.includes('피보험자')?'여성 피보험자 수수료 우위 화법':c.includes('20년')?'20년납 수수료 비교 설명':'5·7·20년납 플랜 안내'}` },
+    { keys:['하이브리드','일시납'], neg:[], tag:'상품', tmpl:(n,c)=>`하이브리드·일시납 홍보 ${n}건 — ${c.includes('수수료')&&(c.includes('낮')||c.includes('아쉽'))?'수수료 낮다는 의견 병존':c.includes('연금')?'일시납 연금 연계 판매':'창구 선호 상품으로 활용'}` },
+    { keys:['연금'], neg:['하이브리드','일시납'], tag:'상품', tmpl:(n,c)=>`연금 상품 안내 ${n}건` },
+    // 영업활동
+    { keys:['수수료'], neg:[], tag:'강점', tmpl:(n,c)=>`수수료 강점 안내 ${n}건 — ${c.includes('좋')&&!c.includes('낮')?'판매인 긍정 반응':c.includes('낮')||c.includes('아쉽')?'수수료 열위 불만 병존':'경쟁사 대비 우위 설명'}` },
+    { keys:['신계약'], neg:[], tag:'관리', tmpl:(n,c)=>`신계약 사후 관리 ${n}건 — ${c.includes('감사')||c.includes('사은품')?'감사 인사·사은품 전달':'계약 발생 후 관계 관리'}` },
+    { keys:['연수'], neg:[], tag:'활동', tmpl:(n,c)=>`판매인 연수 진행 ${n}건 — ${c.includes('청약')||c.includes('성과')?'연수 후 청약 성과 확인':'상품 교육 실시'}` },
+    // 이슈·장애요인
+    { keys:['대출'], neg:[], tag:'이슈', tmpl:(n,c)=>`대부계 연계 판매 ${n}건 — ${c.includes('없')||c.includes('저조')||c.includes('안')?'대출 발생 저조로 연계 어려움':'대출 고객 대상 보험 연계 시도'}` },
+    { keys:['법인'], neg:[], tag:'이슈', tmpl:(n,c)=>`법인계약 발굴 ${n}건 — ${c.includes('없')||c.includes('저조')||c.includes('못')?'법인 실적 미발생':c.includes('RM')?'RM 협력 공략':'법인 고객 상담'}` },
+    { keys:['펀드','주식'], neg:[], tag:'이슈', tmpl:(n,c)=>`투자상품 경쟁 ${n}건 — 고객 관심 투자쪽으로 쏠림, 보장성 판매 어려움` },
+    { keys:['해피콜'], neg:[], tag:'이슈', tmpl:(n,c)=>`해피콜 관련 이슈 ${n}건 — 청약 프로세스 부담 증가` },
+    { keys:['환급률'], neg:[], tag:'이슈', tmpl:(n,c)=>`환급률 비교 이슈 ${n}건 — ${c.includes('차이')||c.includes('낮')?'경쟁사 대비 열위 지적':'환급률 관련 상담'}` },
+    { keys:['폐점','통폐합'], neg:[], tag:'이슈', tmpl:(n,c)=>`지점 폐점·통합 이슈 ${n}건 — 담당 판매인 이관 필요` },
+    { keys:['가입한도','한도'], neg:['폐점'], tag:'이슈', tmpl:(n,c)=>`가입한도 이슈 ${n}건 — 경쟁사 대비 한도 열위` },
+  ];
+
+  const dateIssueSummary = {};
+  Object.entries(dateIssueTexts).forEach(([date, texts]) => {
+    const combined = texts.join(' ');
+    const issues = [];
+    for (const rule of issueRules) {
+      const matchTexts = texts.filter(t =>
+        rule.keys.some(k => t.includes(k)) &&
+        !rule.neg.some(n => t.includes(n))
+      );
+      if (matchTexts.length === 0) continue;
+      const sample = matchTexts[0];
+      issues.push({ tag: rule.tag, text: rule.tmpl(matchTexts.length, combined), score: matchTexts.length });
+    }
+    // 중복 태그 제거 후 상위 3개
+    const seen = new Set();
+    const top = issues
+      .sort((a,b) => b.score - a.score)
+      .filter(i => { if (seen.has(i.tag)) return false; seen.add(i.tag); return true; })
+      .slice(0, 3);
+    dateIssueSummary[date] = top.length > 0 ? top.map(i => i.text).join('\n') : '-';
+  });
+
+  const insights = generateInsights(contents, compCounts, bankCounts);
+  const plan = generatePlan(insights, kwResults, compCounts);
+  return {
+    total: records.length, repCounts, repBanks, bankCounts,
+    topBank: topBank ? topBank[0] : '', topBankPct, totalComp,
+    dateStart: dates[0]||'', dateEnd: dates[dates.length-1]||'', dates,
+    dateCounts, dateIssueSummary, kwResults, insights, plan, records
+  };
+}
+
+function generateInsights(contents, compCounts, bankCounts) {
+  const total = contents.length || 1;
+  const insights = { danger: [], info: [], success: [], warn: [] };
+
+  // ── 경쟁 환경 ──
+  if (compCounts['동양생명'] > 0) {
+    const refundMention = contents.filter(c=>c.includes('동양')&&c.includes('환급률')).length;
+    insights.danger.push(`[동양생명] 총 ${compCounts['동양생명']}건 언급 (전체 대비 ${Math.round(compCounts['동양생명']/total*100)}%). 4월 상품 개정 이후 환급률 우위로 지점 선호도 상승. 환급률 직접 비교 언급 ${refundMention}건 확인 — 5년·8년·10년 시점별 격차가 판매인의 주요 거절 이유로 작용 중.`);
+  }
+  if (compCounts['하나생명'] > 0) {
+    const limitMention = contents.filter(c=>c.includes('하나생명')&&(c.includes('한도')||c.includes('PB')||c.includes('가입'))).length;
+    insights.danger.push(`[하나생명] 총 ${compCounts['하나생명']}건 언급. PB센터·VIP채널에서 높은 가입한도를 바탕으로 고액 계약 유치. 한도 관련 언급 ${limitMention}건 — 당사 가입한도 이슈가 채널 공략의 실질적 걸림돌로 작용.`);
+  }
+  if (compCounts['흥국'] > 0) {
+    insights.danger.push(`[흥국생명] ${compCounts['흥국']}건 언급. 안심상해 시장에서 공격적 영업 전개 중. 일부 지점에서 흥국 하이브리드 일시납(123%) 선호 확인 — 당사와 수익률 직접 비교 발생.`);
+  }
+  if (compCounts['한화'] > 0) {
+    insights.danger.push(`[한화생명] ${compCounts['한화']}건 언급. 소수이나 모니터링 필요.`);
+  }
+
+  // ── 시장 분위기 ──
+  const fundCnt = contents.filter(c=>c.includes('펀드')).length;
+  const loanCnt = contents.filter(c=>c.includes('대출')).length;
+  const hardCnt = contents.filter(c=>/어렵|힘들|주춤|못/.test(c)).length;
+  const closeCnt = contents.filter(c=>c.includes('폐점')||c.includes('마감')||c.includes('통폐합')).length;
+  if (fundCnt > 0) {
+    const stockCnt = contents.filter(c=>(c.includes('펀드')||c.includes('주식'))&&c.includes('불안')).length;
+    insights.info.push(`[투자시장 쏠림] 펀드·투자상품 언급 ${fundCnt}건. 주가 변동으로 고객이 투자상품에 집중하며 보장성보험 상담 기회 감소. '고객 불안' 표현 ${stockCnt}건 — 변동성 장세에서 보장성 필요성 재환기 화법 적극 활용 필요.`);
+  }
+  if (loanCnt > 0) {
+    const loanLowCnt = contents.filter(c=>c.includes('대출')&&(c.includes('없')||c.includes('저조')||c.includes('안'))).length;
+    insights.info.push(`[대부계 실적 저조] 대출 관련 언급 ${loanCnt}건 중 부진·미발생 언급 ${loanLowCnt}건. 대부계 연계 판매 기회가 실질적으로 감소. 연계 판매 의존도를 낮추고 창구 자력 판매(치매형·상해형) 역량 강화가 시급.`);
+  }
+  if (hardCnt > 0) {
+    insights.info.push(`[전반적 영업 위축] '어렵다·힘들다·못했다' 표현 ${hardCnt}건 — 전체 일지의 ${Math.round(hardCnt/total*100)}%. 대내외 환경 압박이 지속되는 가운데, 방문 빈도·관계 관리 중심의 중장기 거점 확보 전략으로 전환 필요.`);
+  }
+  if (closeCnt > 0) {
+    insights.info.push(`[지점 폐점·통합] 폐점·통합 관련 언급 ${closeCnt}건. 해당 지점 판매인 이관 계획 및 신규 담당 지점 조기 개척 필요.`);
+  }
+  const brandCnt = contents.filter(c=>c.includes('iM라이프')&&(c.includes('몰라')||c.includes('설명')||c.includes('모르'))).length;
+  if (brandCnt > 0) {
+    insights.info.push(`[브랜드 인지도 부족] iM라이프 브랜드 설명 필요 지점 ${brandCnt}건. 특히 KB국민 신규 방문 지점 중심으로 브랜드 소개 선행 필요 — 표준 브랜드 소개자료(1장) 제작·배포 권장.`);
+  }
+
+  // ── 당사 강점 및 기회 ──
+  const feeCnt = contents.filter(c=>c.includes('수수료')).length;
+  const feePoseCnt = contents.filter(c=>c.includes('수수료')&&(c.includes('좋')&&!c.includes('낮'))).length;
+  const demCnt = contents.filter(c=>c.includes('치매')).length;
+  const dem8Cnt = contents.filter(c=>c.includes('치매')&&(c.includes('8년')||c.includes('8년차'))).length;
+  const femaleCnt = contents.filter(c=>c.includes('여자')||c.includes('여성')||c.includes('피보험자')).length;
+  const trainCnt = contents.filter(c=>c.includes('연수')&&(c.includes('성과')||c.includes('청약')||c.includes('판매'))).length;
+  const thanksCnt = contents.filter(c=>c.includes('감사')&&(c.includes('신계약')||c.includes('사은품'))).length;
+  if (feeCnt > 0) {
+    insights.success.push(`[수수료 우위] 수수료 관련 언급 ${feeCnt}건. 긍정 반응 ${feePoseCnt}건 — 당사 5년납·20년납 상품의 수수료 경쟁력은 판매인 설득의 핵심 포인트. 수수료 강조형 화법을 표준 영업 스크립트로 정립 권장.`);
+  }
+  if (demCnt > 0) {
+    insights.success.push(`[치매보장형 기회] 치매 관련 언급 ${demCnt}건. 8년차 환급률 우위 언급 ${dem8Cnt}건 — 중도 해지 민원 리스크가 낮다는 점도 판매인에게 유효한 설득 포인트. 창구 활성화 + 비과세 컨셉 결합 판매 지속 확산 필요.`);
+  }
+  if (femaleCnt > 0) {
+    insights.success.push(`[여성 피보험자 수수료 우위] 피보험자 성별 관련 언급 ${femaleCnt}건. 여성 피보험자 시 수수료 추가 우위 화법이 현장에서 효과적으로 활용 중. 판매인 대상 사례 공유 및 화법 교육 확대 권장.`);
+  }
+  if (trainCnt > 0) {
+    insights.success.push(`[연수 효과] 연수 이후 판매 성과 언급 ${trainCnt}건. 연수 → 창구 활성화 → 계약 발생 모델이 유효함을 현장 데이터로 확인. 고성과 지점 연수 모델을 타 지점에 신속 확산 필요.`);
+  }
+  if (thanksCnt > 0) {
+    insights.success.push(`[계약 후 관계 관리] 신계약 감사 인사·사은품 전달 ${thanksCnt}건. 계약 발생 후 즉각적인 감사 방문이 재계약 및 추가 판매로 이어지는 선순환 구조 확인.`);
+  }
+
+  // ── 개선 과제 ──
+  const happyCnt = contents.filter(c=>c.includes('해피콜')).length;
+  const refCnt = contents.filter(c=>c.includes('환급률')&&(c.includes('차이')||c.includes('낮')||c.includes('아쉽'))).length;
+  const limCnt = contents.filter(c=>c.includes('가입한도')||c.includes('한도')).length;
+  const mobileCnt = contents.filter(c=>c.includes('모바일')&&c.includes('청약')).length;
+  const rmCnt = contents.filter(c=>c.includes('RM')||c.includes('대부계')&&c.includes('협력')).length;
+  if (happyCnt > 0) {
+    insights.warn.push(`[해피콜 프로세스] 해피콜 관련 언급 ${happyCnt}건. 가이드라인 변경 이후 청약 절차 부담 증가. 타사 대비 64세 미만 모바일 청약 해피콜 예외처리 미지원으로 경쟁 열위 — 조속한 정책 검토 필요.`);
+  }
+  if (refCnt > 0) {
+    insights.warn.push(`[환급률 경쟁력 격차] 환급률 열위·차이 언급 ${refCnt}건. 동양생명 개정 이후 저해지 상품 5년·8년·10년 시점 환급률 격차가 핵심 이슈로 고착화. 상품 개정 시 환급률 구간별 격차 축소 우선 반영 필요.`);
+  }
+  if (limCnt > 0) {
+    insights.warn.push(`[가입한도 이슈] 가입한도 관련 언급 ${limCnt}건. PB센터·고액 계약 채널에서 하나생명 대비 낮은 한도가 실질적 영업 장벽으로 작용. 한도 상향 또는 예외 심사 패스트트랙 도입 검토 필요.`);
+  }
+  if (mobileCnt > 0) {
+    insights.warn.push(`[모바일 청약 편의성] 모바일 청약 관련 언급 ${mobileCnt}건. 인수 조건·해피콜 절차가 타사보다 복잡하다는 현장 의견. UX 개선 및 프로세스 간소화로 판매인 편의성 향상 시급.`);
+  }
+  if (rmCnt > 0 || loanCnt > 3) {
+    insights.warn.push(`[RM 협력 체계 미흡] 법인계약·대부계 연계 실적 저조 원인 중 하나로 RM과의 협력 체계 부재 지적. 담당 RM 공동 방문 프로그램 및 법인 전용 영업 화법 가이드 마련 필요.`);
+  }
+
+  return insights;
+}
+
+function generatePlan(insights, kwResults, compCounts) {
+  const plan = { short: [], mid: [] };
+  const allInsights = [...insights.danger, ...insights.info, ...insights.success, ...insights.warn];
+
+  // 단기 과제 — 긴급·즉시 대응 가능한 것
+  if (allInsights.some(i=>i.includes('해피콜'))) {
+    plan.short.push('모바일 청약 해피콜 예외처리(64세 미만) 도입 여부 즉시 검토 및 현장 안내');
+  }
+  if (allInsights.some(i=>i.includes('브랜드')||i.includes('iM라이프'))) {
+    plan.short.push('iM라이프 브랜드 소개 표준자료(1페이지) 제작 및 전 담당자 배포');
+  }
+  if (allInsights.some(i=>i.includes('연수'))) {
+    plan.short.push('고성과 지점 치매형 연수 모델 확산 — 미연수 지점 우선 방문 일정 수립');
+  }
+  if (allInsights.some(i=>i.includes('폐점')||i.includes('통합'))) {
+    plan.short.push('폐점·통합 예정 지점 판매인 이관 계획 수립 및 신규 담당 지점 조기 개척');
+  }
+  if (allInsights.some(i=>i.includes('수수료'))) {
+    plan.short.push('수수료 강조형 표준 영업 스크립트 및 여성 피보험자 활용 화법 가이드 배포');
+  }
+  if (allInsights.some(i=>i.includes('동양생명')||i.includes('하나생명'))) {
+    plan.short.push('경쟁사(동양·하나생명) 대비 상품 비교표 최신화 및 담당자 공유');
+  }
+
+  // 중기 과제 — 구조적 개선·제도 변경 필요
+  if (allInsights.some(i=>i.includes('환급률'))) {
+    plan.mid.push('저해지 상품 5년·8년·10년 구간별 환급률 개선안 상품팀 협의 및 차기 개정 시 반영');
+  }
+  if (allInsights.some(i=>i.includes('가입한도'))) {
+    plan.mid.push('하나생명 대비 가입한도 상향 또는 PB채널 전용 예외 심사 패스트트랙 도입 검토');
+  }
+  if (allInsights.some(i=>i.includes('RM')||i.includes('법인'))) {
+    plan.mid.push('RM 공동 방문 프로그램 운영 및 법인 전용 영업 화법·설계 가이드 제작');
+  }
+  if (allInsights.some(i=>i.includes('모바일')||i.includes('프로세스'))) {
+    plan.mid.push('모바일 청약 UX 개선 및 인수 조건 간소화 — 타사 수준의 편의성 달성 목표');
+  }
+  if (allInsights.some(i=>i.includes('대부계')||i.includes('연계 판매'))) {
+    plan.mid.push('대출 연계 의존도 낮추고 창구 자력 판매 역량 강화 — 치매형·상해형 창구 활성화 가이드 정례화');
+  }
+  if (allInsights.some(i=>i.includes('하나생명')&&i.includes('PB'))) {
+    plan.mid.push('PB센터·VIP채널 특화 고액 계약 영업 전략 수립 — 하나생명 거점 지점 집중 공략 로드맵 작성');
+  }
+
+  // 기본값 (인사이트가 적을 때)
+  if (plan.short.length === 0) plan.short.push('주요 경쟁사 상품 비교표 최신화 및 현장 배포', '수수료 강점 표준 화법 가이드 제작');
+  if (plan.mid.length === 0) plan.mid.push('저해지·상해 상품 환급률 경쟁력 개선 검토', '모바일 청약 프로세스 간소화 추진');
+
+  return plan;
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  const p = d.split(/[-\/T]/);
+  return p.length >= 3 ? `${p[0]}년 ${parseInt(p[1])}월 ${parseInt(p[2])}일` : d;
+}
+function fmtRange(s, e) {
+  if (!s) return '기간 미상';
+  return s === e ? fmtDate(s) : `${fmtDate(s)} ~ ${fmtDate(e)}`;
+}
+
+// ─── Preview Render ───
+function renderPreview(d) {
+  const repsRows = Object.entries(d.repCounts).sort((a,b)=>b[1]-a[1]).map(([name,cnt]) =>
+    `<tr><td>${name}</td><td class="td-bold c-navy">${cnt}건</td><td>${d.repBanks[name]||'-'}</td><td>${d.repBanks[name]||'-'}</td><td></td></tr>`
+  ).join('');
+  const kwRows = d.kwResults.slice(0,11).map(kw => {
+    const cls = {navy:'c-navy td-bold',green:'c-green td-bold',red:'c-red td-bold',amber:'c-amber td-bold'}[kw.color]||'';
+    return `<tr><td class="td-left">${kw.name}</td><td class="${cls}">${kw.count}건</td><td class="td-left">${kw.desc}</td></tr>`;
+  }).join('');
+  const dateRows = Object.entries(d.dateCounts).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,cnt]) => {
+    const p = date.split(/[-\/T]/);
+    const label = p.length>=3 ? `${parseInt(p[1])}월 ${parseInt(p[2])}일` : date;
+    const raw = d.dateIssueSummary[date] || '-';
+    const issueHtml = raw === '-' ? '-' : raw.split('\n').map(s=>`<span style="display:block;padding:2px 0;font-size:12px">• ${s}</span>`).join('');
+    return `<tr><td style="white-space:nowrap;vertical-align:top;padding-top:10px">${label}</td><td style="vertical-align:top;padding-top:10px">${cnt}건</td><td class="td-left" style="line-height:1.6;padding:8px 12px">${issueHtml}</td></tr>`;
+  }).join('');
+  const insSec = (label, cls, items) => items.length === 0 ? '' : `
+    <div class="insight-block">
+      <div class="insight-label ${cls}">■ ${{danger:'경쟁 환경',info:'시장 분위기',success:'당사 강점 및 기회',warn:'개선 과제'}[cls]}</div>
+      <ul class="insight-bullets">${items.map(i=>`<li>${i}</li>`).join('')}</ul>
+    </div>`;
+
+  const planShortRows = (d.plan.short||[]).map((t,i)=>`<tr><td style="width:28px;font-weight:600;color:var(--navy)">${i+1}</td><td style="text-align:left">${t}</td></tr>`).join('');
+  const planMidRows  = (d.plan.mid||[]).map((t,i)=>`<tr><td style="width:28px;font-weight:600;color:var(--amber)">${i+1}</td><td style="text-align:left">${t}</td></tr>`).join('');
+
+  document.getElementById('previewMeta').textContent = `분석 기간: ${fmtRange(d.dateStart,d.dateEnd)} · 총 ${d.total}건`;
+  document.getElementById('reportPreview').innerHTML = `
+    <div class="report-cover-title">BM 영업일지 분석 보고서</div>
+    <div class="report-cover-period">${fmtRange(d.dateStart,d.dateEnd)}</div>
+    <div class="report-cover-sub">관리자용 | iM라이프 방카슈랑스 영업본부</div>
+    <div class="section-heading">1. 활동 개요</div>
+    <div class="summary-grid">
+      <div class="summary-card"><div class="summary-card-label">총 영업 활동</div><div class="summary-card-value">${d.total}건</div><div class="summary-card-sub">${fmtRange(d.dateStart,d.dateEnd)}</div></div>
+      <div class="summary-card"><div class="summary-card-label">영업 담당자</div><div class="summary-card-value">${Object.keys(d.repCounts).length}명</div><div class="summary-card-sub">iM뱅크·KB국민</div></div>
+      <div class="summary-card"><div class="summary-card-label">주력 채널</div><div class="summary-card-value">${d.topBank||'-'}</div><div class="summary-card-sub">${d.topBank?d.topBank+' ('+d.topBankPct+'%)':'-'}</div></div>
+      <div class="summary-card"><div class="summary-card-label">경쟁사 언급</div><div class="summary-card-value">${d.totalComp}건</div><div class="summary-card-sub">동양·하나생명 중심</div></div>
+    </div>
+    <div class="section-heading">2. 담당자별 활동 현황</div>
+    <table class="data-table"><thead><tr><th>담당자</th><th>활동 건수</th><th>담당 채널</th><th>담당 은행</th><th>비고</th></tr></thead><tbody>${repsRows}</tbody></table>
+    <div class="section-heading">3. 주요 상품·키워드 언급 빈도 (내용 분석)</div>
+    <table class="data-table"><thead><tr><th style="text-align:left">키워드</th><th>언급 건수</th><th style="text-align:left">주요 내용</th></tr></thead><tbody>${kwRows}</tbody></table>
+    <div class="section-heading">4. 현장 영업 핵심 인사이트</div>
+    ${insSec('경쟁 환경','danger',d.insights.danger)}
+    ${insSec('시장 분위기','info',d.insights.info)}
+    ${insSec('당사 강점 및 기회','success',d.insights.success)}
+    ${insSec('개선 과제','warn',d.insights.warn)}
+    <div class="section-heading">5. 일자별 활동 현황</div>
+    <table class="data-table"><thead><tr><th>날짜</th><th>활동 건수</th><th style="text-align:left">주요 이슈</th></tr></thead><tbody>${dateRows}</tbody></table>
+    <div class="section-heading">6. 향후 계획</div>
+    <div class="insight-label info" style="margin-bottom:8px">● 단기 과제 (1개월 내)</div>
+    <table class="data-table" style="margin-bottom:20px"><tbody>${planShortRows}</tbody></table>
+    <div class="insight-label warn" style="margin-bottom:8px">● 중기 과제 (분기 내)</div>
+    <table class="data-table"><tbody>${planMidRows}</tbody></table>
+    <div class="footer-note">본 보고서는 BM영업일지 내용(J열) 자동 분석을 기반으로 작성되었습니다. | iM라이프 방카슈랑스팀</div>
+  `;
+}
+
+// ─────────────────────────────────────────────
+// DOCX 생성 (JSZip + 순수 XML)
+// ─────────────────────────────────────────────
+function x(s) {
+  // XML 특수문자 이스케이프
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function makeRun(text, opts={}) {
+  const { bold=false, size=20, color='000000', font='맑은 고딕' } = opts;
+  return `<w:r><w:rPr>${bold?'<w:b/>':''}<w:color w:val="${color}"/><w:sz w:val="${size}"/><w:szCs w:val="${size}"/><w:rFonts w:ascii="${font}" w:eastAsia="${font}" w:hAnsi="${font}" w:cs="${font}"/></w:rPr><w:t xml:space="preserve">${x(text)}</w:t></w:r>`;
+}
+
+function makePara(runs, opts={}) {
+  const { align='center', spaceBefore=0, spaceAfter=0, borderBottom=false, numId=null, ilvl=0 } = opts;
+  let pPr = `<w:jc w:val="${align}"/>`;
+  if (spaceBefore || spaceAfter) pPr += `<w:spacing w:before="${spaceBefore}" w:after="${spaceAfter}"/>`;
+  if (borderBottom) pPr += `<w:pBdr><w:bottom w:val="single" w:sz="12" w:color="1F4E79" w:space="1"/></w:pBdr>`;
+  if (numId !== null) pPr = `<w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${numId}"/></w:numPr>` + pPr;
+  return `<w:p><w:pPr>${pPr}</w:pPr>${runs}</w:p>`;
+}
+
+function makeSecHead(text) {
+  return makePara(
+    makeRun(text, { bold:true, size:28, color:'1F4E79' }),
+    { align:'left', spaceBefore:300, spaceAfter:120, borderBottom:true }
+  );
+}
+
+function makeSubHead(text, color='000000') {
+  return makePara(makeRun(text, { bold:true, size:22, color }), { align:'left', spaceBefore:100, spaceAfter:40 });
+}
+
+function makeBullet(text, numId=1) {
+  return makePara(makeRun(text, { size:20 }), { align:'left', spaceBefore:60, spaceAfter:60, numId });
+}
+
+function sp(before=120) {
+  return `<w:p><w:pPr><w:spacing w:before="${before}"/></w:pPr></w:p>`;
+}
+
+function makeCell(text, opts={}) {
+  const { align='center', bold=false, color='000000', bg='FFFFFF', isHeader=false } = opts;
+  const font = '맑은 고딕';
+  const fColor = isHeader ? 'FFFFFF' : color;
+  const fBold = isHeader || bold;
+  const fSize = 20;
+  const borders = `<w:tcBorders><w:top w:val="single" w:sz="1" w:color="CCCCCC"/><w:left w:val="single" w:sz="1" w:color="CCCCCC"/><w:bottom w:val="single" w:sz="1" w:color="CCCCCC"/><w:right w:val="single" w:sz="1" w:color="CCCCCC"/></w:tcBorders>`;
+  const shading = `<w:shd w:val="clear" w:color="auto" w:fill="${bg}"/>`;
+  const margins = `<w:tcMar><w:top w:w="80" w:type="dxa"/><w:left w:w="120" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="120" w:type="dxa"/></w:tcMar>`;
+  const vAlign = `<w:vAlign w:val="center"/>`;
+  // 단락 앞/뒤 간격 0
+  const para = `<w:p><w:pPr><w:jc w:val="${align}"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>${makeRun(text,{bold:fBold,size:fSize,color:fColor,font})}</w:p>`;
+  return `<w:tc><w:tcPr>${borders}${shading}${margins}${vAlign}</w:tcPr>${para}</w:tc>`;
+}
+
+function makeHCell(text) {
+  return makeCell(text, { isHeader:true, bg:'1F4E79' });
+}
+
+function makeDCell(text, align='center', bold=false, color='000000') {
+  return makeCell(text, { align, bold, color, bg:'FFFFFF' });
+}
+
+function makeTable(colWidths, rows) {
+  const totalW = colWidths.reduce((a,b)=>a+b,0);
+  const gridCols = colWidths.map(w=>`<w:gridCol w:w="${w}"/>`).join('');
+  const tblRows = rows.map(cells => `<w:tr>${cells.join('')}</w:tr>`).join('');
+  return `<w:tbl>
+    <w:tblPr>
+      <w:tblW w:w="${totalW}" w:type="dxa"/>
+      <w:tblBorders>
+        <w:top w:val="single" w:sz="1" w:color="CCCCCC"/>
+        <w:left w:val="single" w:sz="1" w:color="CCCCCC"/>
+        <w:bottom w:val="single" w:sz="1" w:color="CCCCCC"/>
+        <w:right w:val="single" w:sz="1" w:color="CCCCCC"/>
+        <w:insideH w:val="single" w:sz="1" w:color="CCCCCC"/>
+        <w:insideV w:val="single" w:sz="1" w:color="CCCCCC"/>
+      </w:tblBorders>
+    </w:tblPr>
+    <w:tblGrid>${gridCols}</w:tblGrid>
+    ${tblRows}
+  </w:tbl>`;
+}
+
+// ── summary-card 스타일 재현 ──
+// 웹의 .summary-card (네이비 배경, 레이블/값/서브 3줄)를 Word 4컬럼 표로 구현
+function makeSummaryTable(cards) {
+  const W = 9026;
+  const colW = Math.floor(W / cards.length);
+  const colWidths = cards.map((_,i) => i === cards.length-1 ? W - colW*(cards.length-1) : colW);
+  const gridCols = colWidths.map(w=>`<w:gridCol w:w="${w}"/>`).join('');
+  const FONT = '맑은 고딕';
+  const BG = '1F4E79';
+  const noBorder = `w:val="none" w:sz="0" w:color="auto"`;
+
+  function cardCell(card, w) {
+    const labelRun = `<w:r><w:rPr><w:color w:val="BBCFE0"/><w:sz w:val="17"/><w:szCs w:val="17"/><w:rFonts w:ascii="${FONT}" w:eastAsia="${FONT}" w:hAnsi="${FONT}" w:cs="${FONT}"/></w:rPr><w:t xml:space="preserve">${x(card.label)}</w:t></w:r>`;
+    const valueRun = `<w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/><w:sz w:val="36"/><w:szCs w:val="36"/><w:rFonts w:ascii="${FONT}" w:eastAsia="${FONT}" w:hAnsi="${FONT}" w:cs="${FONT}"/></w:rPr><w:t xml:space="preserve">${x(card.value)}</w:t></w:r>`;
+    const subRun   = `<w:r><w:rPr><w:color w:val="99B8D0"/><w:sz w:val="16"/><w:szCs w:val="16"/><w:rFonts w:ascii="${FONT}" w:eastAsia="${FONT}" w:hAnsi="${FONT}" w:cs="${FONT}"/></w:rPr><w:t xml:space="preserve">${x(card.sub)}</w:t></w:r>`;
+
+    const labelPara = `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="40" w:line="240" w:lineRule="auto"/></w:pPr>${labelRun}</w:p>`;
+    const valuePara = `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="40" w:line="240" w:lineRule="auto"/></w:pPr>${valueRun}</w:p>`;
+    const subPara   = `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="0"  w:line="240" w:lineRule="auto"/></w:pPr>${subRun}</w:p>`;
+
+    return `<w:tc><w:tcPr>
+      <w:tcW w:w="${w}" w:type="dxa"/>
+      <w:tcBorders>
+        <w:top ${noBorder}/><w:left ${noBorder}/><w:bottom ${noBorder}/>
+        <w:right w:val="single" w:sz="4" w:color="FFFFFF"/>
+      </w:tcBorders>
+      <w:shd w:val="clear" w:color="auto" w:fill="${BG}"/>
+      <w:tcMar><w:top w:w="120" w:type="dxa"/><w:left w:w="140" w:type="dxa"/><w:bottom w:w="120" w:type="dxa"/><w:right w:w="140" w:type="dxa"/></w:tcMar>
+      <w:vAlign w:val="center"/>
+    </w:tcPr>${labelPara}${valuePara}${subPara}</w:tc>`;
+  }
+
+  const row = `<w:tr>${cards.map((c,i)=>cardCell(c,colWidths[i])).join('')}</w:tr>`;
+  return `<w:tbl>
+    <w:tblPr>
+      <w:tblW w:w="${W}" w:type="dxa"/>
+      <w:tblBorders>
+        <w:top ${noBorder}/><w:left ${noBorder}/><w:bottom ${noBorder}/><w:right ${noBorder}/>
+        <w:insideH ${noBorder}/><w:insideV ${noBorder}/>
+      </w:tblBorders>
+      <w:tblCellSpacing w:w="80" w:type="dxa"/>
+    </w:tblPr>
+    <w:tblGrid>${gridCols}</w:tblGrid>
+    ${row}
+  </w:tbl>`;
+}
+
+function buildDocumentXml(d) {
+  const period = fmtRange(d.dateStart, d.dateEnd);
+  const topBankStr = d.topBank ? `${d.topBank} (${d.topBankPct}%)` : '-';
+  const bankSub = Object.entries(d.bankCounts).map(([k,v])=>`${k} ${v}건`).join(' / ');
+  const kwColorMap = { navy:'1F4E79', green:'375623', amber:'7F3F00', red:'C00000', '':'000000' };
+
+  // ── 1 표지 ──
+  const cover = [
+    makePara(makeRun('BM 영업일지 분석 보고서',{bold:true,size:52,color:'1F4E79'}), {align:'center',spaceBefore:480,spaceAfter:120}),
+    makePara(makeRun(period,{size:24,color:'595959'}), {align:'center',spaceBefore:80,spaceAfter:80}),
+    makePara(makeRun('관리자용 | iM라이프 방카슈랑스 영업본부',{size:20,color:'7F7F7F'}), {align:'center',spaceBefore:40,spaceAfter:480,borderBottom:true}),
+  ].join('');
+
+  // ── 2 활동 개요 — summary-card 스타일 ──
+  const sec1 = makeSummaryTable([
+    { label: '총 영업 활동',  value: `${d.total}건`,                        sub: fmtRange(d.dateStart, d.dateEnd) },
+    { label: '영업 담당자',   value: `${Object.keys(d.repCounts).length}명`, sub: 'iM뱅크 · KB국민' },
+    { label: '주력 채널',     value: d.topBank || '-',                       sub: topBankStr },
+    { label: '경쟁사 언급',   value: `${d.totalComp}건`,                     sub: '동양 · 하나생명 중심' },
+  ]);
+
+  // ── 3 담당자별 ──
+  const repEntries = Object.entries(d.repCounts).sort((a,b)=>b[1]-a[1]);
+  const repRows = repEntries.map(([name,cnt],i) => [
+    makeDCell(name,'center'), makeDCell(`${cnt}건`,'center',true,'1F4E79'),
+    makeDCell(d.repBanks[name]||'-','center'), makeDCell(d.repBanks[name]||'-','center'),
+    makeDCell(i===0?'최다 활동':'','center'),
+  ]);
+  const sec2 = makeTable([1800,1600,2000,1800,1826], [
+    [makeHCell('담당자'),makeHCell('활동 건수'),makeHCell('담당 채널'),makeHCell('담당 은행'),makeHCell('비고')],
+    ...repRows
+  ]);
+
+  // ── 4 키워드 ──
+  const kwRows2 = d.kwResults.slice(0,11).map(kw => [
+    makeDCell(kw.name,'left'), makeDCell(`${kw.count}건`,'center',true,kwColorMap[kw.color]||'000000'), makeDCell(kw.desc,'left'),
+  ]);
+  const sec3 = makeTable([3200,1600,4226], [
+    [makeHCell('키워드'),makeHCell('언급 건수'),makeHCell('주요 내용')],
+    ...kwRows2
+  ]);
+
+  // ── 5 인사이트 ──
+  const insDefs = [
+    {key:'danger',label:'■ 경쟁 환경',color:'C00000'},
+    {key:'info',label:'■ 시장 분위기',color:'1F4E79'},
+    {key:'success',label:'■ 당사 강점 및 기회',color:'375623'},
+    {key:'warn',label:'■ 개선 과제',color:'7F3F00'},
+  ];
+  const insParas = insDefs.flatMap(({key,label,color}) => {
+    const items = d.insights[key];
+    if (!items||!items.length) return [];
+    return [makeSubHead(label,color), ...items.map(t=>makeBullet(t,1))];
+  }).join('');
+
+  // ── 6 일자별 ──
+  const dateEntries = Object.entries(d.dateCounts).sort((a,b)=>a[0].localeCompare(b[0]));
+  const dateRows2 = dateEntries.map(([date,cnt]) => {
+    const p = date.split(/[-\/T]/);
+    const label = p.length>=3 ? `${parseInt(p[1])}월 ${parseInt(p[2])}일` : date;
+    const raw = d.dateIssueSummary[date]||'-';
+    // 이슈가 여러 줄이면 셀 안에 여러 단락으로 출력
+    const issueParagraphs = raw === '-'
+      ? `<w:p><w:pPr><w:jc w:val="left"/></w:pPr>${makeRun('-',{size:20})}</w:p>`
+      : raw.split('\n').map(line =>
+          `<w:p><w:pPr><w:jc w:val="left"/></w:pPr>${makeRun('• ' + line,{size:19})}</w:p>`
+        ).join('');
+    const issueCell = `<w:tc><w:tcPr>
+      <w:tcBorders><w:top w:val="single" w:sz="1" w:color="CCCCCC"/><w:left w:val="single" w:sz="1" w:color="CCCCCC"/><w:bottom w:val="single" w:sz="1" w:color="CCCCCC"/><w:right w:val="single" w:sz="1" w:color="CCCCCC"/></w:tcBorders>
+      <w:shd w:val="clear" w:color="auto" w:fill="FFFFFF"/>
+      <w:tcMar><w:top w:w="80" w:type="dxa"/><w:left w:w="120" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="120" w:type="dxa"/></w:tcMar>
+      <w:vAlign w:val="top"/>
+    </w:tcPr>${issueParagraphs}</w:tc>`;
+    return [makeDCell(label,'center'), makeDCell(`${cnt}건`,'center'), issueCell];
+  });
+  const sec5 = makeTable([2000,1800,5226], [
+    [makeHCell('날짜'),makeHCell('활동 건수'),makeHCell('주요 이슈')],
+    ...dateRows2
+  ]);
+
+  // ── 7 향후 계획 ──
+  const planShortRows2 = (d.plan.short||[]).map((t,i) => [
+    makeDCell(`${i+1}`, 'center', true, '1F4E79'),
+    makeDCell(t, 'left'),
+  ]);
+  const planMidRows2 = (d.plan.mid||[]).map((t,i) => [
+    makeDCell(`${i+1}`, 'center', true, '7F3F00'),
+    makeDCell(t, 'left'),
+  ]);
+  const sec6short = makeTable([600, 8426], [
+    [makeHCell('순번'), makeHCell('과제 내용')],
+    ...planShortRows2
+  ]);
+  const sec6mid = makeTable([600, 8426], [
+    [makeHCell('순번'), makeHCell('과제 내용')],
+    ...planMidRows2
+  ]);
+
+  const body = [
+    cover,
+    makeSecHead('1. 활동 개요'), sec1, sp(),
+    makeSecHead('2. 담당자별 활동 현황'), sec2, sp(),
+    makeSecHead('3. 주요 상품·키워드 언급 빈도 (내용 분석)'), sec3, sp(),
+    makeSecHead('4. 현장 영업 핵심 인사이트'), insParas, sp(),
+    makeSecHead('5. 일자별 활동 현황'), sec5, sp(),
+    makeSecHead('6. 향후 계획'),
+    makeSubHead('■ 단기 과제 (1개월 내)', '1F4E79'),
+    sec6short, sp(),
+    makeSubHead('■ 중기 과제 (분기 내)', '7F3F00'),
+    sec6mid, sp(240),
+    makePara(makeRun('본 보고서는 BM영업일지 내용(J열) 자동 분석을 기반으로 작성되었습니다. | iM라이프 방카슈랑스팀',{size:16,color:'7F7F7F'}),{align:'right',spaceBefore:120}),
+  ].join('');
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
+  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
+  mc:Ignorable="w14">
+  <w:body>
+    ${body}
+    <w:sectPr>
+      <w:pgSz w:w="11906" w:h="16838"/>
+      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/>
+    </w:sectPr>
+  </w:body>
+</w:document>`;
+}
+
+async function downloadWord() {
+  if (!analysisData) return;
+  const btn = document.getElementById('downloadBtn');
+  btn.disabled = true;
+  btn.textContent = '생성 중...';
+
+  try {
+    const zip = new JSZip();
+
+    const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default ContentType="application/vnd.openxmlformats-package.relationships+xml" Extension="rels"/>
+  <Default ContentType="application/xml" Extension="xml"/>
+  <Override ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml" PartName="/word/document.xml"/>
+  <Override ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml" PartName="/word/styles.xml"/>
+  <Override ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml" PartName="/word/numbering.xml"/>
+  <Override ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml" PartName="/word/settings.xml"/>
+  <Override ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml" PartName="/word/fontTable.xml"/>
+</Types>`;
+
+    const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`;
+
+    const docRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
+  <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/>
+</Relationships>`;
+
+    const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:docDefaults>
+    <w:rPrDefault><w:rPr>
+      <w:rFonts w:ascii="맑은 고딕" w:eastAsia="맑은 고딕" w:hAnsi="맑은 고딕" w:cs="맑은 고딕"/>
+      <w:sz w:val="20"/><w:szCs w:val="20"/>
+    </w:rPr></w:rPrDefault>
+  </w:docDefaults>
+  <w:style w:type="paragraph" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
+</w:styles>`;
+
+    const numbering = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="0">
+    <w:multiLevelType w:val="hybridMultilevel"/>
+    <w:lvl w:ilvl="0">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="bullet"/>
+      <w:lvlText w:val="&#x25CF;"/>
+      <w:lvlJc w:val="left"/>
+      <w:pPr><w:ind w:left="560" w:hanging="280"/></w:pPr>
+      <w:rPr>
+        <w:rFonts w:ascii="맑은 고딕" w:eastAsia="맑은 고딕" w:hAnsi="맑은 고딕"/>
+        <w:sz w:val="20"/><w:szCs w:val="20"/>
+      </w:rPr>
+    </w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
+</w:numbering>`;
+
+    const settings = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:defaultTabStop w:val="720"/>
+</w:settings>`;
+
+    const fontTable = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:fonts xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:font w:name="맑은 고딕">
+    <w:panose1 w:val="02110609070A0202020204"/>
+    <w:charset w:val="81"/>
+    <w:family w:val="swiss"/>
+    <w:pitch w:val="variable"/>
+  </w:font>
+</w:fonts>`;
+
+    const documentXml = buildDocumentXml(analysisData);
+
+    zip.file('[Content_Types].xml', contentTypes);
+    zip.file('_rels/.rels', rels);
+    zip.file('word/document.xml', documentXml);
+    zip.file('word/_rels/document.xml.rels', docRels);
+    zip.file('word/styles.xml', styles);
+    zip.file('word/numbering.xml', numbering);
+    zip.file('word/settings.xml', settings);
+    zip.file('word/fontTable.xml', fontTable);
+
+    const blob = await zip.generateAsync({ type:'blob', mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeName = fileName.replace(/\.xlsx?$/i,'');
+    a.download = `BM영업일지_분석보고서_${safeName}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch(err) {
+    alert('Word 파일 생성 오류: ' + err.message);
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Word 다운로드`;
+  }
+}
+
+// ─── UI State ───
+function showProgress(msg) {
+  document.getElementById('uploadSection').style.display = 'none';
+  document.getElementById('errorBox').style.display = 'none';
+  document.getElementById('previewSection').style.display = 'none';
+  document.getElementById('progressSection').style.display = 'block';
+  document.getElementById('progressStep').textContent = msg;
+}
+function setStep(msg) { document.getElementById('progressStep').textContent = msg; }
+function showPreview() { document.getElementById('progressSection').style.display = 'none'; document.getElementById('previewSection').style.display = 'block'; }
+function showError(msg) {
+  document.getElementById('progressSection').style.display = 'none';
+  document.getElementById('uploadSection').style.display = 'block';
+  const box = document.getElementById('errorBox');
+  box.style.display = 'block'; box.textContent = msg;
+}
+function resetApp() {
+  analysisData = null; fileName = '';
+  document.getElementById('fileInput').value = '';
+  document.getElementById('previewSection').style.display = 'none';
+  document.getElementById('errorBox').style.display = 'none';
+  document.getElementById('uploadSection').style.display = 'block';
+}
+</script>
+</body>
+</html>
