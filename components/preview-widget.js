@@ -5,10 +5,11 @@
 import Formatters from '../utils/formatters.js';
 
 export class PreviewWidget {
-  constructor(containerId, onDownload, onReset) {
+  constructor(containerId, onDownload, onReset, onClaudeAnalyze) {
     this.container = document.getElementById(containerId);
     this.onDownload = onDownload;
     this.onReset = onReset;
+    this.onClaudeAnalyze = onClaudeAnalyze;
     this.init();
   }
 
@@ -32,6 +33,13 @@ export class PreviewWidget {
               </svg>
               다시 업로드
             </button>
+            <button class="btn-claude" id="claudeBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 8v4l3 3"/>
+              </svg>
+              Claude AI 심층 분석
+            </button>
             <button class="btn-download" id="downloadBtn">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -53,6 +61,7 @@ export class PreviewWidget {
   attachEventListeners() {
     const downloadBtn = document.getElementById('downloadBtn');
     const resetBtn = document.getElementById('resetBtn');
+    const claudeBtn = document.getElementById('claudeBtn');
 
     if (downloadBtn) {
       downloadBtn.addEventListener('click', () => this.onDownload());
@@ -60,6 +69,51 @@ export class PreviewWidget {
     if (resetBtn) {
       resetBtn.addEventListener('click', () => this.onReset());
     }
+    if (claudeBtn && this.onClaudeAnalyze) {
+      claudeBtn.addEventListener('click', () => this.handleClaudeClick());
+    }
+  }
+
+  async handleClaudeClick() {
+    const claudeBtn = document.getElementById('claudeBtn');
+    if (!claudeBtn) return;
+
+    const original = claudeBtn.innerHTML;
+    claudeBtn.disabled = true;
+    claudeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg> 준비 중...`;
+
+    try {
+      await this.onClaudeAnalyze();
+      this.showClaudeToast();
+    } finally {
+      claudeBtn.disabled = false;
+      claudeBtn.innerHTML = original;
+    }
+  }
+
+  showClaudeToast() {
+    const existing = document.getElementById('claudeToast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'claudeToast';
+    toast.innerHTML = `
+      <strong>Claude AI 준비 완료!</strong><br>
+      프롬프트가 클립보드에 복사됐습니다.<br>
+      새 탭에서 <kbd>⌘V</kbd> (또는 Ctrl+V)로 붙여넣기 하세요.
+    `;
+    toast.style.cssText = `
+      position: fixed; bottom: 32px; right: 32px; z-index: 9999;
+      background: #1F4E79; color: white; padding: 16px 20px;
+      border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+      font-size: 14px; line-height: 1.6; max-width: 300px;
+      animation: slideIn 0.3s ease;
+    `;
+    document.head.insertAdjacentHTML('beforeend', `
+      <style>@keyframes slideIn{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}</style>
+    `);
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 5000);
   }
 
   renderReport(data) {

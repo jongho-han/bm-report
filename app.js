@@ -6,6 +6,7 @@ import FileService from './services/file-service.js';
 import AnalysisService from './services/analysis-service.js';
 import WordExportService from './services/word-export-service.js';
 import GoogleDriveService from './services/google-drive-service.js';
+import ClaudeService from './services/claude-service.js';
 import AnalysisData from './models/analysis-data.js';
 import UploadWidget from './components/upload-widget.js';
 import ProgressWidget from './components/progress-widget.js';
@@ -35,7 +36,8 @@ class ReportApp {
     this.previewWidget = new PreviewWidget(
       'previewContainer',
       () => this.handleDownload(),
-      () => this.handleReset()
+      () => this.handleReset(),
+      () => this.handleClaudeAnalyze()
     );
   }
 
@@ -104,6 +106,11 @@ class ReportApp {
         console.error(err);
       }
     }
+  }
+
+  async handleClaudeAnalyze() {
+    if (!this.analysisData) return;
+    await ClaudeService.openWithPrompt(this.analysisData, this.fileName);
   }
 
   #restoreDownloadBtn(btn) {
